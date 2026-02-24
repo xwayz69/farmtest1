@@ -121,43 +121,7 @@ end
 -- =============================================
 
 local function startMarkerThread(id, coords, tier)
-    -- Hentikan thread lama kalau ada
-    PlotMarkerActive[id] = false
-    Wait(20) -- kasih waktu thread lama berhenti
-
-    local tierConfig = Config.Plots.tiers[tier]
-    if not tierConfig then return end
-
-    local r      = tierConfig.color.r
-    local g      = tierConfig.color.g
-    local b      = tierConfig.color.b
-    local radius = tierConfig.radius
-
-    PlotMarkerActive[id] = true
-
-    CreateThread(function()
-        while PlotMarkerActive[id] do
-            -- Cek jarak player ke plot
-            local playerCoords = GetEntityCoords(cache.ped)
-            local dist         = #(playerCoords - coords)
-
-            if dist <= MARKER_DRAW_DISTANCE then
-                local alpha = isOwner(id) and 70 or 35
-                DrawMarker(
-                    1,
-                    coords.x, coords.y, coords.z + 0.05,
-                    0, 0, 0,
-                    0, 0, 0,
-                    radius * 2, radius * 2, 0.3,
-                    r, g, b, alpha,
-                    false, false, 2, false, nil, nil, false
-                )
-                Wait(0)   -- Render tiap frame saat dekat
-            else
-                Wait(500) -- Tidur saat masih dalam RENDER_DISTANCE tapi di luar MARKER_DISTANCE
-            end
-        end
-    end)
+    -- Marker lingkaran dinonaktifkan
 end
 
 local function stopMarkerThread(id)
@@ -604,7 +568,12 @@ CreateThread(function()
         local count = 0
         for id, data in pairs(result) do
             if data and data.coords then
-                addPlot(id, data.owner, data.coords, data.tier)
+                -- coords dari network bisa jadi plain table {x,y,z}, convert ke vector3
+                local coords = data.coords
+                if type(coords) == 'table' then
+                    coords = vector3(coords.x, coords.y, coords.z)
+                end
+                addPlot(id, data.owner, coords, data.tier)
                 count = count + 1
             end
         end
@@ -627,12 +596,23 @@ exports('getPlotIdByProp', function(entityHandle)
 end)
 
 exports('isInsideMyPlot', function(coords)
-    if not coords or not MyIdentifier then return false, nil end
+    if not coords then return false, nil end
+    -- Fallback fetch identifier jika belum terisi
+    if not MyIdentifier then
+        MyIdentifier = lib.callback.await('maximgm-farming:server:Plot:GetMyIdentifier', 3000)
+        if not MyIdentifier then return false, nil end
+    end
     for id, plot in pairs(AllPlots) do
         if plot.owner == MyIdentifier then
             local tierConfig = Config.Plots.tiers[plot.tier]
-            if tierConfig and #(coords - plot.coords) <= tierConfig.radius then
-                return true, id
+            if tierConfig then
+                -- Pakai 2D distance (XY only) supaya Z floating plot tidak pengaruh
+                local dx   = coords.x - plot.coords.x
+                local dy   = coords.y - plot.coords.y
+                local dist = math.sqrt(dx * dx + dy * dy)
+                if dist <= tierConfig.radius then
+                    return true, id
+                end
             end
         end
     end

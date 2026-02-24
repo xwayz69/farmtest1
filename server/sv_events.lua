@@ -303,3 +303,103 @@ RegisterNetEvent('maximgm-farming:server:GiveFertilizer', function(plantId)
         )
     end
 end)
+-- =============================================
+-- Weather System Server-Side
+-- =============================================
+
+local currentWeather = 'CLEAR'
+
+local function isRainWeather(weather)
+    if not Config.Weather or not Config.Weather.RainWeathers then return false end
+    for _, w in ipairs(Config.Weather.RainWeathers) do
+        if w == weather then return true end
+    end
+    return false
+end
+
+local function isHotWeather(weather)
+    if not Config.Weather or not Config.Weather.HotWeathers then return false end
+    for _, w in ipairs(Config.Weather.HotWeathers) do
+        if w == weather then return true end
+    end
+    return false
+end
+
+--- Terima update weather dari client (throttle: hanya proses jika berubah)
+RegisterNetEvent('maximgm-farming:server:WeatherChanged', function(weather)
+    if not weather or type(weather) ~= 'string' then return end
+    weather = weather:upper()
+    if weather == currentWeather then return end
+    currentWeather = weather
+    GlobalState.MaximgmCurrentWeather = weather
+    utils.print(string.format('[Weather] Updated: %s (rain=%s, hot=%s)',
+        weather, tostring(isRainWeather(weather)), tostring(isHotWeather(weather))))
+end)
+
+--- Weather Effect Loop
+--- Jalan bersamaan dengan decay loop
+--- Hujan  → push water timestamp baru ke semua plant (simulate disiram hujan)
+--- Panas  → kurangi water lebih cepat (geser timestamp terakhir ke belakang)
+CreateThread(function()
+    while not _G.Plant do Wait(3000) end
+
+    utils.print('[Weather] Weather effect loop started.')
+
+    while true do
+        Wait((Config.Weather and Config.Weather.CheckInterval or 15) * 60 * 1000)
+
+        if not Config.Weather or not Config.Weather.Enabled then goto continue end
+
+        local weather = currentWeather
+        local isRain  = isRainWeather(weather)
+        local isHot   = isHotWeather(weather)
+
+        if not isRain and not isHot then goto continue end
+
+        local now      = os.time()
+        local affected = 0
+
+        -- Iterasi via PlantCache (server-side, berisi semua plant ID)
+        for id, _ in pairs(_G.PlantCache or {}) do
+            local plant = _G.Plant:getPlant(id)
+            if not plant then goto nextplant end
+
+            -- ── HUJAN: tambah water timestamp ──────────────
+            if isRain then
+                local currentWater = plant:calcWater()
+                -- Hanya isi jika water belum penuh (< 90%)
+                if currentWater < 90.0 then
+                    local water = plant.water or {}
+                    water[#water + 1] = now
+                    plant:set('water', water)
+                    plant:save()
+                    affected = affected + 1
+                end
+            end
+
+            -- ── PANAS: percepat decay water ─────────────────
+            if isHot then
+                local water = plant.water or {}
+                if #water > 0 then
+                    local hotMultiplier = Config.Weather.HotDecayMultiplier or 1.5
+                    local extraDecayMin = Config.LoopUpdate * (hotMultiplier - 1.0)
+                    -- Geser timestamp terakhir mundur = simulate decay lebih cepat
+                    water[#water] = water[#water] - math.floor(extraDecayMin * 60)
+                    plant:set('water', water)
+                    plant:save()
+                end
+            end
+
+            ::nextplant::
+        end
+
+        if isRain and affected > 0 then
+            utils.print(string.format('[Weather] Rain watered %d plants automatically.', affected))
+        end
+        if isHot then
+            utils.print(string.format('[Weather] Heat applied extra decay (x%.1f) to plants.', Config.Weather.HotDecayMultiplier or 1.5))
+        end
+
+        ::continue::
+    end
+end)

@@ -268,3 +268,29 @@ Config.PlantHealth = {
     -- ✅ Siram sebelum air turun di bawah WaterThreshold (default 40%)
     -- ✅ Pupuk sebelum pupuk turun di bawah FertilizerThreshold (default 50%)
 }
+-- =============================================
+-- Weather System Config
+-- Terintegrasi dengan Renewed-Weathersync
+-- =============================================
+Config.Weather = {
+    Enabled = true,
+
+    -- Weather yang dianggap "hujan" → air otomatis terisi
+    RainWeathers = {
+        'RAIN', 'THUNDER', 'BLIZZARD', 'SNOWLIGHT', 'CLEARING'
+    },
+
+    -- Weather yang dianggap "panas" → health decay lebih cepat
+    HotWeathers = {
+        'EXTRASUNNY', 'CLEAR', 'SMOG', 'FOGGY'
+    },
+
+    -- Saat hujan: tambah water level sekian persen per LoopUpdate
+    RainWaterBonus = 30.0,
+
+    -- Saat panas: health decay multiplier (1.0 = normal, 1.5 = 50% lebih cepat)
+    HotDecayMultiplier = 1.5,
+
+    -- Interval cek weather di server (menit), sebaiknya sama dengan LoopUpdate
+    CheckInterval = 15,
+}

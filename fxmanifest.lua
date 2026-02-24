@@ -32,6 +32,7 @@ client_scripts {
     'client/plant.lua',
     'client/planting.lua',      -- PATCH ini dulu sebelum pakai plot
     'client/interactions.lua',
+    'client/cl_weather.lua',     -- Weather sync client
     'client/cl_plot.lua',       -- Plot client (privat)
     'client/main.lua',
 }

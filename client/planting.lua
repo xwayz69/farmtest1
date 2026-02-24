@@ -175,11 +175,9 @@ local function useSeed(plantType, rowMode)
                 lib.hideTextUI(); DeleteObject(tempObject); placingSeed = false; return
             end
 
-            local onMyPlot = false
-            local hovPlotId = nil
-            if hit and DoesEntityExist(entityHit) and GetEntityType(entityHit) == 3 then
-                hovPlotId = exports[Config.Resource]:getPlotIdByProp(entityHit)
-                onMyPlot  = hovPlotId ~= nil
+            local onMyPlot, hovPlotId = false, nil
+            if hit then
+                onMyPlot, hovPlotId = exports[Config.Resource]:isInsideMyPlot(endCoords)
             end
 
             if hit then
@@ -219,10 +217,10 @@ local function useSeed(plantType, rowMode)
 
             local onMyPlot = false
             local endPlotId = nil
-            if hit and DoesEntityExist(entityHit) and GetEntityType(entityHit) == 3 then
-                endPlotId = exports[Config.Resource]:getPlotIdByProp(entityHit)
-                -- Harus prop milik plot yang sama dengan start
-                onMyPlot  = endPlotId ~= nil and endPlotId == startPlotId
+            if hit then
+                onMyPlot, endPlotId = exports[Config.Resource]:isInsideMyPlot(endCoords)
+                -- Harus dalam plot yang sama dengan start
+                if endPlotId ~= startPlotId then onMyPlot = false end
             end
 
             if hit then
@@ -320,13 +318,8 @@ local function useSeed(plantType, rowMode)
             end
 
             if hit then
-                -- Cek apakah entity yang kena adalah prop plot milik sendiri
-                local plotId = nil
-                if DoesEntityExist(entityHit) and GetEntityType(entityHit) == 3 then -- type 3 = object/prop
-                    plotId = exports[Config.Resource]:getPlotIdByProp(entityHit)
-                end
-
-                local onMyPlot = plotId ~= nil
+                -- Cek apakah coords berada dalam radius plot milik sendiri
+                local onMyPlot, plotId = exports[Config.Resource]:isInsideMyPlot(endCoords)
 
                 -- Preview: tampilkan di atas prop jika valid, merah jika tidak
                 if onMyPlot then
