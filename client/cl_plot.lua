@@ -492,6 +492,21 @@ CreateThread(function()
 end)
 
 -- =============================================
+-- Export: cek apakah entity adalah prop plot milik sendiri
+-- Return plotId jika ya, nil jika bukan
+exports('getPlotIdByProp', function(entityHandle)
+    if not entityHandle then return nil end
+    if not MyIdentifier then return nil end
+    for id, plot in pairs(AllPlots) do
+        if plot.owner == MyIdentifier then
+            if PlotObjects[id] and PlotObjects[id] == entityHandle then
+                return id
+            end
+        end
+    end
+    return nil
+end)
+
 -- Export: cek apakah coords ada di dalam plot MILIK SENDIRI
 -- Dipakai planting.lua sebelum trigger server
 -- =============================================

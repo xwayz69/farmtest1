@@ -22,7 +22,7 @@ Config.Plots = {
 
             -- Prop box yang di-spawn sebagai raised bed
             -- prop_box_tea_01a = wooden crate / box (ada di base game)
-            prop         = `prop_boxpile_03a`,
+            prop         = `plantpot`,
             propZOffset  = 0.0,       -- offset Z saat spawn prop (turunkan jika amblas)
             plantZOffset = 0.55,      -- tinggi tanaman di atas prop (di atas permukaan box)
 

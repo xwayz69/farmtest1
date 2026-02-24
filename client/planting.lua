@@ -149,306 +149,229 @@ local function useSeed(plantType, rowMode)
     currentPlantType = plantType
 
     -- Row planting mode
+    -- Untuk row mode: arahkan ke prop box, set titik awal & akhir di atas box
     if rowMode then
-        local startPos = nil
-        local tempObject = nil
-        
-        lib.showTextUI(Locales['row_plant_start'] or '[E] Set Start Point | [X] Cancel', {
-            position = 'left-center',
-            icon = 'fas fa-seedling',
-            style = { borderRadius = 10 }
-        })
-
-        local hit, entityHit, endCoords, surfaceNormal, materialHash = RayCast(511, 4, rayCastDistance)
         local ModelHash = plantConfig.props[1]
-        local zOffset = plantConfig.stageZOffset[1] or 0.0
-        
+        local zOffset   = plantConfig.stageZOffset[1] or 0.0
+
         lib.requestModel(ModelHash)
-        tempObject = CreateObject(ModelHash, endCoords.x, endCoords.y, endCoords.z + zOffset, false, false, false)
+        local tempObject = CreateObject(ModelHash, 0, 0, 0, false, false, false)
         SetModelAsNoLongerNeeded(ModelHash)
         SetEntityCollision(tempObject, false, false)
         SetEntityAlpha(tempObject, 200, true)
 
-        -- Select start position
-        while not startPos do
-            hit, entityHit, endCoords, surfaceNormal, materialHash = RayCast(511, 4, rayCastDistance)
+        lib.showTextUI(Locales['row_plant_start'] or '[E] Aim at plot box - Set Start / [X] Cancel', {
+            position = 'left-center', icon = 'fas fa-seedling', style = { borderRadius = 10 }
+        })
 
-            if IsControlPressed(0, 186) then -- [X] Cancel
-                lib.hideTextUI()
-                placingSeed = false
-                DeleteObject(tempObject)
-                return
+        -- ── Pilih titik START ──────────────────────────────────
+        local startPos   = nil
+        local startPlotId = nil
+
+        while not startPos do
+            local hit, entityHit, endCoords = RayCast(511, 4, rayCastDistance)
+
+            if IsControlPressed(0, 186) then
+                lib.hideTextUI(); DeleteObject(tempObject); placingSeed = false; return
+            end
+
+            local onMyPlot = false
+            local hovPlotId = nil
+            if hit and DoesEntityExist(entityHit) and GetEntityType(entityHit) == 3 then
+                hovPlotId = exports[Config.Resource]:getPlotIdByProp(entityHit)
+                onMyPlot  = hovPlotId ~= nil
             end
 
             if hit then
                 SetEntityCoords(tempObject, endCoords.x, endCoords.y, endCoords.z + zOffset)
+                SetEntityAlpha(tempObject, onMyPlot and 220 or 80, true)
+            end
 
-                if IsControlPressed(0, 38) then -- [E] Set start
-                    if Config.GroundHashes[materialHash] then
-                        if checkInsideFarmingZone() then
-                            startPos = endCoords
-                            Wait(200)
-                        else
-                            utils.notify(
-                                Locales['notify_title_farming'], 
-                                Locales['not_in_farming_zone'] or 'Must be in farming zone!', 
-                                'error', 
-                                3000
-                            )
-                            Wait(200)
-                        end
-                    else
-                        utils.notify(Locales['notify_title_farming'], Locales['cannot_plant_here'], 'error', 3000)
-                        Wait(200)
-                    end
+            if IsControlPressed(0, 38) and hit then
+                if not onMyPlot then
+                    utils.notify(Locales['notify_title_farming'],
+                        Locales['plot_aim_at_box'] or 'Aim at your farm plot box!', 'error', 3000)
+                    Wait(300)
+                else
+                    startPos    = endCoords
+                    startPlotId = hovPlotId
+                    Wait(200)
                 end
             end
             Wait(0)
         end
 
-        -- Select end position
-        lib.showTextUI(Locales['row_plant_end'] or '[E] Set End Point & Plant | [X] Cancel', {
-            position = 'left-center',
-            icon = 'fas fa-seedling',
-            style = { borderRadius = 10 }
+        -- ── Pilih titik END & tanam ────────────────────────────
+        lib.showTextUI(Locales['row_plant_end'] or '[E] Aim at plot box - Set End & Plant / [X] Cancel', {
+            position = 'left-center', icon = 'fas fa-seedling', style = { borderRadius = 10 }
         })
 
-        local rowObjects = {}
-        table.insert(rowObjects, tempObject)
+        local rowObjects = { tempObject }
 
         while true do
-            hit, entityHit, endCoords, surfaceNormal, materialHash = RayCast(511, 4, rayCastDistance)
+            local hit, entityHit, endCoords = RayCast(511, 4, rayCastDistance)
 
-            if IsControlPressed(0, 186) then -- [X] Cancel
+            if IsControlPressed(0, 186) then
                 lib.hideTextUI()
-                placingSeed = false
-                for _, obj in ipairs(rowObjects) do
-                    DeleteObject(obj)
-                end
-                return
+                for _, obj in ipairs(rowObjects) do DeleteObject(obj) end
+                placingSeed = false; return
+            end
+
+            local onMyPlot = false
+            local endPlotId = nil
+            if hit and DoesEntityExist(entityHit) and GetEntityType(entityHit) == 3 then
+                endPlotId = exports[Config.Resource]:getPlotIdByProp(entityHit)
+                -- Harus prop milik plot yang sama dengan start
+                onMyPlot  = endPlotId ~= nil and endPlotId == startPlotId
             end
 
             if hit then
-                -- Calculate row positions
                 local positions = calculateRowPositions(startPos, endCoords, Config.MinPlantDistance)
-                
-                -- Clear old preview objects
-                for i = 2, #rowObjects do
-                    DeleteObject(rowObjects[i])
-                end
-                rowObjects = {tempObject}
-                
-                -- Create preview objects
+
+                -- Hapus preview lama
+                for i = 2, #rowObjects do DeleteObject(rowObjects[i]) end
+                rowObjects = { tempObject }
+
+                -- Spawn preview baru
                 for i = 2, #positions do
-                    local previewObj = CreateObject(ModelHash, positions[i].x, positions[i].y, positions[i].z + zOffset, false, false, false)
-                    SetEntityCollision(previewObj, false, false)
-                    SetEntityAlpha(previewObj, 200, true)
-                    table.insert(rowObjects, previewObj)
+                    local alpha = onMyPlot and 200 or 60
+                    local obj   = CreateObject(ModelHash, positions[i].x, positions[i].y, positions[i].z + zOffset, false, false, false)
+                    SetEntityCollision(obj, false, false)
+                    SetEntityAlpha(obj, alpha, true)
+                    table.insert(rowObjects, obj)
                 end
+                SetEntityAlpha(tempObject, onMyPlot and 200 or 60, true)
 
-                if IsControlPressed(0, 38) then -- [E] Plant row
-                    if Config.GroundHashes[materialHash] then
-                        if checkInsideFarmingZone() then
-                            -- Check if player has enough seeds
-                            local seedsNeeded = #positions
-                            local hasSeeds = client.hasItems(plantConfig.seed, seedsNeeded)
-                            
-                            if not hasSeeds then
-                                utils.notify(
-                                    Locales['notify_title_farming'], 
-                                    string.format('You need %d seeds! (Current positions: %d)', seedsNeeded, seedsNeeded), 
-                                    'error', 
-                                    3000
-                                )
-                                Wait(200)
-                            else
-                                lib.hideTextUI()
-                                
-                                -- Delete preview objects
-                                for _, obj in ipairs(rowObjects) do
-                                    DeleteObject(obj)
-                                end
-
-                                -- Plant all seeds
-                                local ped = cache.ped
-                                lib.playAnim(ped, 'amb@medic@standing@kneel@base', 'base', 8.0, 8.0, -1, 1, 0, false, false, false)
-                                lib.playAnim(ped, 'anim@gangops@facility@servers@bodysearch@', 'player_search', 8.0, 8.0, -1, 48, 0, false, false, false)
-                                
-                                if lib.progressBar({
-                                    duration = 2000 * #positions,
-                                    label = string.format('Planting %d seeds...', #positions),
-                                    useWhileDead = false,
-                                    canCancel = true,
-                                    disable = { car = true, move = true, combat = true, mouse = false },
-                                }) then
-                                    local planted = 0
-                                    local skipped = 0
-                                    for _, pos in ipairs(positions) do
-                                        local insidePlot, plotId = exports[Config.Resource]:isInsideMyPlot(pos)
-                                        if insidePlot then
-                                            -- Tambah plantZOffset supaya tanaman spawn di atas box
-                                            local plantCoords = pos
-                                            if plotId and _G.PlotSystem and _G.PlotSystem.AllPlots then
-                                                local plot = _G.PlotSystem.AllPlots[plotId]
-                                                if plot then
-                                                    local tierConfig = Config.Plots.tiers[plot.tier]
-                                                    if tierConfig and tierConfig.plantZOffset then
-                                                        plantCoords = vector3(pos.x, pos.y, pos.z + tierConfig.plantZOffset)
-                                                    end
-                                                end
-                                            end
-                                            plantSeedAtLocation(plantCoords, plantType, true)
-                                            planted = planted + 1
-                                        else
-                                            skipped = skipped + 1
-                                        end
-                                    end
-
-                                    ClearPedTasks(ped)
-                                    placingSeed = false
-
-                                    if skipped > 0 then
-                                        utils.notify(
-                                            Locales['notify_title_farming'],
-                                            string.format('Planted %d seeds (%d skipped - outside plot)', planted, skipped),
-                                            planted > 0 and 'success' or 'error',
-                                            4000
-                                        )
-                                    else
-                                        utils.notify(
-                                            Locales['notify_title_farming'], 
-                                            string.format('Planted %d seeds in a row!', planted), 
-                                            'success', 
-                                            3000
-                                        )
-                                    end
-                                    return
-                                else
-                                    ClearPedTasks(ped)
-                                    placingSeed = false
-                                    utils.notify(Locales['notify_title_farming'], Locales['canceled'], 'error', 3000)
-                                    return
-                                end
-                            end
-                        else
-                            utils.notify(
-                                Locales['notify_title_farming'], 
-                                Locales['not_in_farming_zone'] or 'Must be in farming zone!', 
-                                'error', 
-                                3000
-                            )
-                            Wait(200)
-                        end
+                if IsControlPressed(0, 38) then
+                    if not onMyPlot then
+                        utils.notify(Locales['notify_title_farming'],
+                            Locales['plot_aim_at_box'] or 'Aim at your farm plot box!', 'error', 3000)
+                        Wait(300)
                     else
-                        utils.notify(Locales['notify_title_farming'], Locales['cannot_plant_here'], 'error', 3000)
-                        Wait(200)
+                        local positions2 = calculateRowPositions(startPos, endCoords, Config.MinPlantDistance)
+                        local seedsNeeded = #positions2
+
+                        if not client.hasItems(plantConfig.seed, seedsNeeded) then
+                            utils.notify(Locales['notify_title_farming'],
+                                string.format('You need %d seeds!', seedsNeeded), 'error', 3000)
+                            Wait(200)
+                        else
+                            lib.hideTextUI()
+                            for _, obj in ipairs(rowObjects) do DeleteObject(obj) end
+
+                            local ped = cache.ped
+                            lib.playAnim(ped, 'amb@medic@standing@kneel@base', 'base', 8.0, 8.0, -1, 1, 0, false, false, false)
+                            lib.playAnim(ped, 'anim@gangops@facility@servers@bodysearch@', 'player_search', 8.0, 8.0, -1, 48, 0, false, false, false)
+
+                            if lib.progressBar({
+                                duration = 2000 * seedsNeeded,
+                                label    = string.format('Planting %d seeds...', seedsNeeded),
+                                useWhileDead = false, canCancel = true,
+                                disable  = { car = true, move = true, combat = true, mouse = false },
+                            }) then
+                                for _, pos in ipairs(positions2) do
+                                    plantSeedAtLocation(pos, plantType, true)
+                                end
+                                ClearPedTasks(ped)
+                                placingSeed = false
+                                utils.notify(Locales['notify_title_farming'],
+                                    string.format('Planted %d seeds in a row!', seedsNeeded), 'success', 3000)
+                                return
+                            else
+                                ClearPedTasks(ped)
+                                placingSeed = false
+                                utils.notify(Locales['notify_title_farming'], Locales['canceled'], 'error', 3000)
+                                return
+                            end
+                        end
                     end
                 end
             end
             Wait(0)
         end
     else
-        -- Single plant mode (original)
-        lib.showTextUI(Locales['place_or_cancel'], {
+        -- Single plant mode
+        -- Raycast harus kena PROP BOX plot milik sendiri, bukan ground
+        lib.showTextUI(Locales['place_or_cancel'] or '[E] - Place Seed / [X] - Cancel', {
             position = 'left-center',
             icon = 'fas fa-seedling',
             style = { borderRadius = 10 }
         })
 
-        local hit, entityHit, endCoords, surfaceNormal, materialHash = RayCast(511, 4, rayCastDistance)
-
         local ModelHash = plantConfig.props[1]
-        local zOffset = plantConfig.stageZOffset[1] or 0.0
-        
+        local zOffset   = plantConfig.stageZOffset[1] or 0.0
+
         lib.requestModel(ModelHash)
-        local plant = CreateObject(ModelHash, endCoords.x, endCoords.y, endCoords.z + zOffset, false, false, false)
-        
+        local plant = CreateObject(ModelHash, 0, 0, 0, false, false, false)
         SetModelAsNoLongerNeeded(ModelHash)
         SetEntityCollision(plant, false, false)
         SetEntityAlpha(plant, 200, true)
 
         while not seedPlaced do
-            hit, entityHit, endCoords, surfaceNormal, materialHash = RayCast(511, 4, rayCastDistance)
+            local hit, entityHit, endCoords, _, _ = RayCast(511, 4, rayCastDistance)
 
-            if IsControlPressed(0, 186) then
+            if IsControlPressed(0, 186) then -- [X] Cancel
                 lib.hideTextUI()
-                seedPlaced = false
-                placingSeed = false
+                seedPlaced    = false
+                placingSeed   = false
                 currentPlantType = nil
                 DeleteObject(plant)
                 return
             end
 
             if hit then
-                SetEntityCoords(plant, endCoords.x, endCoords.y, endCoords.z + zOffset)
+                -- Cek apakah entity yang kena adalah prop plot milik sendiri
+                local plotId = nil
+                if DoesEntityExist(entityHit) and GetEntityType(entityHit) == 3 then -- type 3 = object/prop
+                    plotId = exports[Config.Resource]:getPlotIdByProp(entityHit)
+                end
 
-                if IsControlPressed(0, 38) then
-                    if Config.GroundHashes[materialHash] then
-                        if not checkInsideFarmingZone() then
+                local onMyPlot = plotId ~= nil
+
+                -- Preview: tampilkan di atas prop jika valid, merah jika tidak
+                if onMyPlot then
+                    SetEntityCoords(plant, endCoords.x, endCoords.y, endCoords.z + zOffset)
+                    SetEntityAlpha(plant, 220, true)
+                else
+                    SetEntityCoords(plant, endCoords.x, endCoords.y, endCoords.z + zOffset)
+                    SetEntityAlpha(plant, 80, true)
+                end
+
+                if IsControlPressed(0, 38) then -- [E] Place
+                    if not onMyPlot then
+                        utils.notify(
+                            Locales['notify_title_farming'],
+                            Locales['plot_aim_at_box'] or 'Aim at your farm plot box to plant!',
+                            'error', 3000
+                        )
+                        Wait(300)
+                    else
+                        local tooClose, distance = isPlantTooClose(endCoords)
+                        if tooClose then
                             utils.notify(
-                                Locales['notify_title_farming'], 
-                                Locales['not_in_farming_zone'] or 'Must be in farming zone!', 
-                                'error', 
-                                3000
+                                Locales['notify_title_farming'],
+                                string.format(
+                                    Locales['plant_too_close'] or 'Too close! (%.1fm, min: %.1fm)',
+                                    distance, Config.MinPlantDistance
+                                ),
+                                'error', 3000
                             )
                             Wait(200)
                         else
-                            local tooClose, distance = isPlantTooClose(endCoords)
-                            
-                            if tooClose then
-                                utils.notify(
-                                    Locales['notify_title_farming'], 
-                                    string.format(
-                                        Locales['plant_too_close'] or 'Too close! (%.1fm, min: %.1fm)', 
-                                        distance, 
-                                        Config.MinPlantDistance
-                                    ), 
-                                    'error', 
-                                    3000
-                                )
-                                Wait(200)
+                            seedPlaced = true
+                            lib.hideTextUI()
+                            DeleteObject(plant)
+
+                            if plantSeedAtLocation(endCoords, plantType, false) then
+                                placingSeed      = false
+                                currentPlantType = nil
+                                return
                             else
-                                -- Cek apakah dalam plot milik sendiri
-                                local insidePlot, plotId = exports[Config.Resource]:isInsideMyPlot(endCoords)
-                                if not insidePlot then
-                                    utils.notify(
-                                        Locales['notify_title_farming'],
-                                        Locales['plot_not_in_plot'] or 'You must plant inside your own farm plot!',
-                                        'error', 3000
-                                    )
-                                    Wait(200)
-                                else
-                                    -- Ambil plantZOffset dari tier plot supaya tanaman spawn di atas box
-                                    local plantCoords = endCoords
-                                    if plotId and _G.PlotSystem and _G.PlotSystem.AllPlots then
-                                        local plot = _G.PlotSystem.AllPlots[plotId]
-                                        if plot then
-                                            local tierConfig = Config.Plots.tiers[plot.tier]
-                                            if tierConfig and tierConfig.plantZOffset then
-                                                plantCoords = vector3(endCoords.x, endCoords.y, endCoords.z + tierConfig.plantZOffset)
-                                            end
-                                        end
-                                    end
-
-                                    seedPlaced = true
-                                    lib.hideTextUI()
-                                    DeleteObject(plant)
-
-                                    if plantSeedAtLocation(plantCoords, plantType, false) then
-                                        placingSeed = false
-                                        currentPlantType = nil
-                                        return
-                                    else
-                                        placingSeed = false
-                                        currentPlantType = nil
-                                        return
-                                    end
-                                end
+                                placingSeed      = false
+                                currentPlantType = nil
+                                return
                             end
                         end
-                    else
-                        utils.notify(Locales['notify_title_farming'], Locales['cannot_plant_here'], 'error', 3000)
-                        Wait(200)
                     end
                 end
             end

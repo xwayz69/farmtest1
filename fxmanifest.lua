@@ -4,7 +4,7 @@ fx_version 'cerulean'
 game 'gta5'
 use_experimental_fxv2_oal 'yes'
 lua54 'yes'
-
+this_is_a_map 'yes'
 version '1.2.0'
 description 'MaximGM Farming System - Private Plot System'
 author 'MaximGM Development'
@@ -49,3 +49,7 @@ server_scripts {
     'server/sv_events.lua',         -- PATCH ini untuk validasi plot
     'server/sv_interactions.lua',
 }
+
+data_file 'DLC_ITYP_REQUEST' 'stream/*.ytyp'
+
+files {'stream/*.ytyp'}
