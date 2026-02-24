@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<CMapTypes>
+  <archetypes>
+    <Item type="CBaseArchetypeDef">
+      <lodDist value="200" />
+      <flags value="32" />
+      <specialAttribute value="0" />
+      <bbMin x="-2.5092115" y="-2.5013328" z="0.029485583" />
+      <bbMax x="2.4907894" y="2.4986677" z="0.5180195" />
+      <bsCentre x="-0.009211063" y="-0.0013325214" z="0.27375254" />
+      <bsRadius value="3.5439625" />
+      <hdTextureDist value="100" />
+      <name>plot</name>
+      <textureDictionary>plot</textureDictionary>
+      <physicsDictionary>plot</physicsDictionary>
+      <assetType>ASSET_TYPE_DRAWABLE</assetType>
+      <assetName>plot</assetName>
+    </Item>
+  </archetypes>
+  <name>plot</name>
+</CMapTypes>

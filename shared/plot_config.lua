@@ -5,10 +5,10 @@ Config.Plots = {
     plotItem = 'maximgm_plot',
 
     --- Max plot per player
-    maxPlotsPerPlayer = 3,
+    maxPlotsPerPlayer = 10,
 
     --- Minimum jarak antar plot (meter)
-    minPlotDistance = 15.0,
+    minPlotDistance = 7.0,
 
     --- Tiers plot
     --- plantZOffset = tinggi di atas prop box tempat tanaman di-spawn
@@ -22,7 +22,7 @@ Config.Plots = {
 
             -- Prop box yang di-spawn sebagai raised bed
             -- prop_box_tea_01a = wooden crate / box (ada di base game)
-            prop         = `plantpot`,
+            prop         = `plot`,
             propZOffset  = 0.0,       -- offset Z saat spawn prop (turunkan jika amblas)
             plantZOffset = 0.55,      -- tinggi tanaman di atas prop (di atas permukaan box)
 

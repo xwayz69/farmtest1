@@ -32,7 +32,6 @@
     "add_water": "Add water to this plant",
     "add_fertilizer": "Add fertilizer to the plant",
     "plot_aim_at_box": "Aim at your farm plot box to plant!",
-  "plot_place_hint": "[E] - Place Plot / [X] - Cancel",
   "plot_placed": "Farm plot placed!",
   "plot_removed": "Plot removed. Item returned.",
   "plot_upgraded": "Plot upgraded to %s!",
@@ -51,5 +50,8 @@
   "plot_removing": "Removing plot...",
   "plot_header": "Farm Plot",
   "plot_no_item": "You don't have a farm plot item!",
-  "plot_no_upgrade_item": "You need %s to upgrade!"
+  "plot_no_upgrade_item": "You need %s to upgrade!",
+  "plot_place_hint": "[E] Place  |  [X] Cancel  |  [↑↓] Height  |  [←→] Rotate",
+"plot_too_close_other": "This plot is too close to another player's plot!",
+"plot_placed_on_other": "You cannot place on another player's plot area!"
 }

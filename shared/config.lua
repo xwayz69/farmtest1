@@ -22,6 +22,8 @@ Config = {
         },
     },
 
+
+
     --- Farming Plants Configuration
     Plants = {
         -- Vegetables
@@ -225,8 +227,8 @@ Config = {
 
     --- Growing Related Settings (OPTIMIZED)
     SpawnRadius = 50.0, -- REDUCED from 75.0 to reduce checks (plants spawn when closer)
-    rayCastingDistance = 10.0,
-    MinPlantDistance = 2.0, -- Minimum distance between plants (used in row planting too)
+    rayCastingDistance = 20.0,
+    MinPlantDistance = 1.0, -- Minimum distance between plants (used in row planting too)
     ClearOnStartup = true,
     LoopUpdate = 15,
     WaterDecay = 0.5,
@@ -235,4 +237,34 @@ Config = {
     FertilizerThreshold = 50,
     WaterThreshold = 40,
     HealthBaseDecay = {10, 13},
+}
+
+Config.PlantHealth = {
+    -- ── Status Threshold ────────────────────────────
+    HealthyThreshold = 60,  -- > 60%  = 🟢 Healthy
+    DyingThreshold   = 30,  -- 30-60% = 🟡 Dying  |  < 30% = 🔴 Dead
+
+    -- ── Visual Update di Client ──────────────────────
+    -- Interval cek health & update tint warna prop (ms)
+    VisualUpdateInterval = 15000, -- 15 detik
+
+    -- ── Warning ke Owner ────────────────────────────
+    -- Notif ke owner saat jalan dekat tanaman dying/dead
+    WarnOwnerOnNearby = true,
+    WarnCooldown      = 30000, -- Jeda antar warning: 30 detik (ms)
+
+    -- ── Auto Delete Tanaman Mati ─────────────────────
+    -- true  = tanaman mati otomatis dihapus saat decay tick
+    -- false = tanaman mati dibiarkan, player harus hapus manual
+    AutoDeleteDead = false,
+
+    -- ── Catatan Decay (read-only, dari Config utama) ──
+    -- Water habis dalam  : 100 / WaterDecay menit      → default 200 menit (~3.3 jam)
+    -- Fertilizer habis   : 100 / FertilizerDecay menit → default 200 menit (~3.3 jam)
+    -- Decay check setiap : LoopUpdate menit             → default 15 menit
+    -- Health turun       : HealthBaseDecay per interval yang gagal → default 10-13 poin
+    --
+    -- Supaya tanaman tetap SEHAT:
+    -- ✅ Siram sebelum air turun di bawah WaterThreshold (default 40%)
+    -- ✅ Pupuk sebelum pupuk turun di bawah FertilizerThreshold (default 50%)
 }

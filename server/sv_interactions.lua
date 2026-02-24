@@ -1,5 +1,6 @@
---- Plant Interactions Module
---- Handles plant checking, watering, fertilizing, harvesting, and clearing
+--- Plant Interactions Module - Server Side
+--- Handles check plant menu, showing health status, water, fertilizer info
+--- Life System: shows Healthy / Dying / Dead status with color schemes
 
 --- Check Plant Menu
 RegisterNetEvent('maximgm-farming:client:CheckPlant', function(data)
@@ -7,9 +8,7 @@ RegisterNetEvent('maximgm-farming:client:CheckPlant', function(data)
     if not plantData then return end
 
     local success, result = lib.callback.await('maximgm-farming:server:GetPlantData', 200, plantData.id)
-    if not success then
-        return
-    end
+    if not success then return end
 
     local options = {}
 
@@ -19,177 +18,193 @@ RegisterNetEvent('maximgm-farming:client:CheckPlant', function(data)
         headerTitle = headerTitle .. ' - Owner: ' .. result.ownerName
     end
 
-    if result.health == 0 then -- Dead plant
+    -- ✅ Tentukan status health + emoji + warna
+    local healthStatus      = ''
+    local healthColorScheme = 'green'
+    local cfg               = Config.PlantHealth
+
+    if result.health > cfg.HealthyThreshold then
+        healthStatus      = ' 🟢 ' .. (Locales['plant_status_healthy'] or 'Healthy')
+        healthColorScheme = 'green'
+    elseif result.health > cfg.DyingThreshold then
+        healthStatus      = ' 🟡 ' .. (Locales['plant_status_dying'] or 'Dying!')
+        healthColorScheme = 'yellow'
+    else
+        healthStatus      = ' 🔴 ' .. (Locales['plant_status_dead'] or 'Dead!')
+        healthColorScheme = 'red'
+    end
+
+    -- ✅ Peringatan untuk tanaman yang butuh perhatian
+    local waterStatus = ''
+    if result.water < cfg.DyingThreshold then
+        waterStatus = ' ⚠️'
+    end
+
+    local fertStatus = ''
+    if result.fertilizer < cfg.DyingThreshold then
+        fertStatus = ' ⚠️'
+    end
+
+    if result.health == 0 then
+        -- ── DEAD PLANT ──────────────────────────────────────────
         if result.isOwner then
             options = {
                 {
-                    title = Locales['clear_plant_header'],
-                    description = Locales['clear_plant_text'],
-                    icon = 'fas fa-skull-crossbones',
-                    event = 'maximgm-farming:client:ClearPlant',
-                    args = data.entity
+                    title       = '🔴 ' .. (Locales['clear_plant_header'] or 'Clear Plant'),
+                    description = Locales['clear_plant_text'] or 'The plant is dead..',
+                    icon        = 'fas fa-skull-crossbones',
+                    event       = 'maximgm-farming:client:ClearPlant',
+                    args        = data.entity
                 }
             }
         else
             options = {
                 {
-                    title = Locales['plant_dead'],
+                    title       = Locales['plant_dead'] or 'Plant is Dead',
                     description = Locales['not_plant_owner'] or 'Only the owner can remove this plant',
-                    icon = 'fas fa-lock',
+                    icon        = 'fas fa-lock',
                 }
             }
         end
-    elseif result.growth == 100 then -- Ready to harvest
+
+    elseif result.growth == 100 then
+        -- ── READY TO HARVEST ────────────────────────────────────
         local fertInfo = ''
         if result.totalFertilizer > 0 then
-            fertInfo = string.format(' | Fertilizer: %dx (+%d%% bonus)', result.totalFertilizer, result.fertilizerBonus)
+            fertInfo = string.format(' | +%d%% bonus', result.fertilizerBonus)
         end
-        
+
+        options[#options + 1] = {
+            title       = 'Health: ' .. result.health .. '%' .. healthStatus .. ' | Stage: ' .. result.stage,
+            description = 'Growth: ' .. result.growth .. '% — Ready!' .. fertInfo,
+            progress    = result.growth,
+            colorScheme = healthColorScheme,
+            icon        = 'fas fa-chart-simple',
+            disabled    = true,
+        }
+
         if result.isOwner then
             options[#options + 1] = {
-                title = 'Health: ' .. result.health .. '%' .. ' - Stage: ' .. result.stage,
-                description = 'Growth: ' .. result.growth .. '%' .. fertInfo,
-                progress = result.growth,
-                colorScheme = 'green',
-                icon = 'fas fa-scissors',
-                event = 'maximgm-farming:client:HarvestPlant',
-                args = data.entity
+                title       = '🌾 ' .. (Locales['harvesting_plant'] or 'Harvest Plant'),
+                description = string.format('Base: %d items%s', result.growth, fertInfo),
+                icon        = 'fas fa-scissors',
+                event       = 'maximgm-farming:client:HarvestPlant',
+                args        = data.entity
             }
         else
             options[#options + 1] = {
-                title = 'Ready to Harvest',
+                title       = Locales['ready_for_harvest'] or 'Ready to Harvest',
                 description = Locales['not_plant_owner'] or 'Only the owner can harvest this plant',
-                icon = 'fas fa-lock',
+                icon        = 'fas fa-lock',
             }
         end
-    else -- Growing
+
+    else
+        -- ── GROWING ─────────────────────────────────────────────
+
+        -- ✅ Health bar dengan status
         options[#options + 1] = {
-            title = 'Health: ' .. result.health .. '%' .. ' - Stage: ' .. result.stage,
+            title       = 'Health: ' .. result.health .. '%' .. healthStatus .. ' | Stage: ' .. result.stage,
             description = 'Growth: ' .. result.growth .. '%',
-            progress = result.growth,
+            progress    = result.health,
+            colorScheme = healthColorScheme,
+            icon        = 'fas fa-heart-pulse',
+            disabled    = true,
+        }
+
+        -- Growth bar
+        options[#options + 1] = {
+            title       = 'Growth: ' .. result.growth .. '%',
+            description = 'Stage ' .. result.stage .. ' / 5',
+            progress    = result.growth,
             colorScheme = 'green',
-            icon = 'fas fa-chart-simple',
+            icon        = 'fas fa-chart-simple',
+            disabled    = true,
         }
 
         if result.isOwner then
+            -- ✅ Water bar dengan warning kalau mau habis
+            local waterColorScheme = result.water > 50 and 'cyan' or result.water > 25 and 'yellow' or 'red'
             options[#options + 1] = {
-                title = 'Water: ' .. result.water .. '%',
-                description = Locales['add_water'],
-                progress = result.water,
-                colorScheme = 'cyan',
-                icon = 'fas fa-shower',
-                event = 'maximgm-farming:client:GiveWater',
-                args = data.entity
+                title       = 'Water: ' .. result.water .. '%' .. waterStatus,
+                description = result.water < cfg.WaterThreshold
+                    and '⚠️ ' .. (Locales['plant_water_low'] or 'Water is too low! Plant health is decaying!')
+                    or Locales['add_water'] or 'Add water to this plant',
+                progress    = result.water,
+                colorScheme = waterColorScheme,
+                icon        = 'fas fa-droplet',
+                event       = 'maximgm-farming:client:GiveWater',
+                args        = data.entity
             }
-            
+
+            -- ✅ Fertilizer bar dengan warning
+            local fertColorScheme = result.fertilizer > 50 and 'yellow' or result.fertilizer > 25 and 'orange' or 'red'
             options[#options + 1] = {
-                title = 'Fertilizer: ' .. result.fertilizer .. '%' .. ' (Used: ' .. result.totalFertilizer .. 'x)',
-                description = Locales['add_fertilizer'],
-                progress = result.fertilizer,
-                colorScheme = 'yellow',
-                icon = 'fab fa-nutritionix',
-                event = 'maximgm-farming:client:GiveFertilizer',
-                args = data.entity
+                title       = 'Fertilizer: ' .. result.fertilizer .. '% (Used: ' .. result.totalFertilizer .. 'x)' .. fertStatus,
+                description = result.fertilizer < cfg.FertilizerThreshold
+                    and '⚠️ ' .. (Locales['plant_fertilizer_low'] or 'Fertilizer too low! Plant health is decaying!')
+                    or string.format('%s | +%d%% harvest bonus', Locales['add_fertilizer'] or 'Add fertilizer', result.fertilizerBonus),
+                progress    = result.fertilizer,
+                colorScheme = fertColorScheme,
+                icon        = 'fas fa-flask',
+                event       = 'maximgm-farming:client:GiveFertilizer',
+                args        = data.entity
             }
+
+            -- ✅ Tips section - tampilkan apa yang perlu dilakukan
+            local tipText = ''
+            if result.water < cfg.WaterThreshold and result.fertilizer < cfg.FertilizerThreshold then
+                tipText = Locales['plant_tip_both'] or '💡 Tip: Water AND fertilize to stop health decay!'
+            elseif result.water < cfg.WaterThreshold then
+                tipText = Locales['plant_tip_water'] or '💡 Tip: Water your plant to stop health decay!'
+            elseif result.fertilizer < cfg.FertilizerThreshold then
+                tipText = Locales['plant_tip_fertilizer'] or '💡 Tip: Fertilize your plant to stop health decay!'
+            end
+
+            if tipText ~= '' then
+                options[#options + 1] = {
+                    title       = tipText,
+                    icon        = 'fas fa-lightbulb',
+                    colorScheme = 'orange',
+                    disabled    = true,
+                }
+            end
+
         else
+            -- Non-owner: tampilkan info tapi tidak bisa interact
             options[#options + 1] = {
-                title = 'Water: ' .. result.water .. '%',
+                title       = 'Water: ' .. result.water .. '%',
                 description = 'Only owner can interact',
-                progress = result.water,
+                progress    = result.water,
                 colorScheme = 'cyan',
-                icon = 'fas fa-lock',
+                icon        = 'fas fa-lock',
+                disabled    = true,
             }
-            
+
             options[#options + 1] = {
-                title = 'Fertilizer: ' .. result.fertilizer .. '%',
+                title       = 'Fertilizer: ' .. result.fertilizer .. '%',
                 description = 'Only owner can interact',
-                progress = result.fertilizer,
+                progress    = result.fertilizer,
                 colorScheme = 'yellow',
-                icon = 'fas fa-lock',
+                icon        = 'fas fa-lock',
+                disabled    = true,
             }
         end
     end
-    
-    -- Add clear option for owner
-    if result.isOwner and result.growth ~= 100 then
-        options[#options + 1] = {
-            title = Locales['clear_plant_header'],
-            description = Locales['clear_plant_desc'] or 'Remove this plant',
-            icon = 'fas fa-trash',
-            event = 'maximgm-farming:client:ClearPlant',
-            args = data.entity
-        }
-    end
-    
+
     lib.registerContext({
-        id = 'maximgm_farming_main',
-        title = headerTitle,
-        options = options
+        id      = 'maximgm_plant_menu_' .. data.entity,
+        title   = headerTitle,
+        options = options,
     })
-
-    lib.showContext('maximgm_farming_main')
-end)
-
---- Clear Plant
-RegisterNetEvent('maximgm-farming:client:ClearPlant', function(entity)
-    local plantData = _G.PlantClass.PlantCache[entity]
-    if not plantData then return end
-
-    local ped = cache.ped
-
-    TaskTurnPedToFaceEntity(ped, entity, 1.0)
-    Wait(500)
-
-    lib.playAnim(ped, 'amb@medic@standing@kneel@base', 'base', 8.0, 8.0, -1, 1, 0, false, false, false)
-    lib.playAnim(ped, 'anim@gangops@facility@servers@bodysearch@', 'player_search', 8.0, 8.0, -1, 48, 0, false, false, false)
-
-    if lib.progressBar({
-        duration = 8500,
-        label = Locales['clear_plant'],
-        useWhileDead = false,
-        canCancel = true,
-        disable = { car = true, move = true, combat = true, mouse = false },
-    }) then
-        TriggerServerEvent('maximgm-farming:server:ClearPlant', plantData.id)
-        ClearPedTasks(ped)
-    else
-        ClearPedTasks(ped)
-        utils.notify(Locales['notify_title_farming'], Locales['canceled'], 'error', 3000)
-    end
-end)
-
---- Harvest Plant
-RegisterNetEvent('maximgm-farming:client:HarvestPlant', function(entity)
-    local plantData = _G.PlantClass.PlantCache[entity]
-    if not plantData then return end
-
-    local ped = cache.ped
-    TaskTurnPedToFaceEntity(ped, entity, 1.0)
-    Wait(500)
-
-    lib.playAnim(ped, 'amb@medic@standing@kneel@base', 'base', 8.0, 8.0, -1, 1, 0, false, false, false)
-    lib.playAnim(ped, 'anim@gangops@facility@servers@bodysearch@', 'player_search', 8.0, 8.0, -1, 48, 0, false, false, false)
-
-    if lib.progressBar({
-        duration = 8500,
-        label = Locales['harvesting_plant'],
-        useWhileDead = false,
-        canCancel = true,
-        disable = { car = true, move = true, combat = true, mouse = false },
-    }) then
-        TriggerServerEvent('maximgm-farming:server:HarvestPlant', plantData.id)
-        ClearPedTasks(ped)
-    else
-        utils.notify(Locales['notify_title_farming'], Locales['canceled'], 'error', 3000)
-        ClearPedTasks(ped)
-    end
+    lib.showContext('maximgm_plant_menu_' .. data.entity)
 end)
 
 --- Give Water
 RegisterNetEvent('maximgm-farming:client:GiveWater', function(entity)
     local plantData = _G.PlantClass.PlantCache[entity]
     if not plantData then return end
-    
+
     local plantConfig = Config.Plants[plantData.type]
     if not plantConfig then return end
 
@@ -197,38 +212,41 @@ RegisterNetEvent('maximgm-farming:client:GiveWater', function(entity)
         return utils.notify(Locales['notify_title_farming'], Locales['missing_water'], 'error', 3000)
     end
 
-    local ped = cache.ped
+    local ped    = cache.ped
     local coords = GetEntityCoords(ped)
-    local model = joaat('prop_wateringcan')
+    local model  = joaat('prop_watering_can')
 
     TaskTurnPedToFaceEntity(ped, entity, 1.0)
     Wait(500)
 
     lib.requestModel(model)
     local created_object = CreateObject(model, coords.x, coords.y, coords.z, true, true, true)
-    AttachEntityToEntity(created_object, ped, GetPedBoneIndex(ped, 28422), 0.4, 0.1, 0.0, 90.0, 180.0, 0.0, true, true, false, true, 1, true)
     SetModelAsNoLongerNeeded(model)
+    AttachEntityToEntity(created_object, ped, GetPedBoneIndex(ped, 28422), 0.12, 0.04, 0.02, 20.0, 175.0, 80.0, true, true, false, true, 1, true)
 
-    lib.requestNamedPtfxAsset('core')
-    UseParticleFxAsset('core')
-    local effect = StartParticleFxLoopedOnEntity('ent_sht_water', created_object, 0.35, 0.0, 0.25, 0.0, 0.0, 0.0, 2.0, false, false, false)
+    local ptfxDict = 'core'
+    RequestNamedPtfxAsset(ptfxDict)
+    while not HasNamedPtfxAssetLoaded(ptfxDict) do Wait(0) end
+
+    UseParticleFxAssetNextCall(ptfxDict)
+    local effect = StartParticleFxLoopedOnEntity('ent_amb_jet_ml_1', entity, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.25, false, false, false)
 
     if lib.progressBar({
-        duration = 6000,
-        label = Locales['watering_plant'],
+        duration     = 5000,
+        label        = Locales['watering_plant'] or 'Watering Plant..',
         useWhileDead = false,
-        canCancel = true,
-        disable = { car = true, move = true, combat = true, mouse = false },
-        anim = { dict = 'weapon@w_sp_jerrycan', clip = 'fire', flags = 1 },
+        canCancel    = true,
+        disable      = { car = true, move = true, combat = true, mouse = false },
+        anim         = { dict = 'weapon@w_sp_jerrycan', clip = 'fire', flags = 1 },
     }) then
         DeleteEntity(created_object)
         StopParticleFxLooped(effect, 0)
-        RemoveNamedPtfxAsset('core')
+        RemoveNamedPtfxAsset(ptfxDict)
         TriggerServerEvent('maximgm-farming:server:GiveWater', plantData.id)
     else
         DeleteEntity(created_object)
         StopParticleFxLooped(effect, 0)
-        RemoveNamedPtfxAsset('core')
+        RemoveNamedPtfxAsset(ptfxDict)
         utils.notify(Locales['notify_title_farming'], Locales['canceled'], 'error', 3000)
     end
 end)
@@ -237,7 +255,7 @@ end)
 RegisterNetEvent('maximgm-farming:client:GiveFertilizer', function(entity)
     local plantData = _G.PlantClass.PlantCache[entity]
     if not plantData then return end
-    
+
     local plantConfig = Config.Plants[plantData.type]
     if not plantConfig then return end
 
@@ -245,9 +263,9 @@ RegisterNetEvent('maximgm-farming:client:GiveFertilizer', function(entity)
         return utils.notify(Locales['notify_title_farming'], Locales['missing_fertilizer'], 'error', 3000)
     end
 
-    local ped = cache.ped
+    local ped    = cache.ped
     local coords = GetEntityCoords(ped)
-    local model = joaat('w_am_jerrycan_sf')
+    local model  = joaat('w_am_jerrycan_sf')
 
     TaskTurnPedToFaceEntity(ped, entity, 1.0)
     Wait(500)
@@ -258,12 +276,12 @@ RegisterNetEvent('maximgm-farming:client:GiveFertilizer', function(entity)
     AttachEntityToEntity(created_object, ped, GetPedBoneIndex(ped, 28422), 0.3, 0.1, 0.0, 90.0, 180.0, 0.0, true, true, false, true, 1, true)
 
     if lib.progressBar({
-        duration = 6000,
-        label = Locales['fertilizing_plant'],
+        duration     = 6000,
+        label        = Locales['fertilizing_plant'] or 'Adding fertilizer..',
         useWhileDead = false,
-        canCancel = true,
-        disable = { car = true, move = true, combat = true, mouse = false },
-        anim = { dict = 'weapon@w_sp_jerrycan', clip = 'fire', flags = 1 },
+        canCancel    = true,
+        disable      = { car = true, move = true, combat = true, mouse = false },
+        anim         = { dict = 'weapon@w_sp_jerrycan', clip = 'fire', flags = 1 },
     }) then
         TriggerServerEvent('maximgm-farming:server:GiveFertilizer', plantData.id)
         ClearPedTasks(ped)

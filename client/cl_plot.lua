@@ -1,24 +1,26 @@
---- Plot System - Client
---- Semua player bisa LIHAT plot (prop box + marker)
---- Hanya OWNER yang bisa interact (tanam, siram, upgrade, remove)
+--- Plot System - Client (FIXED)
+--- ✅ FIX kedip: DrawMarker di thread terpisah, BUKAN di nearby lib.points
+--- ✅ FIX arrow: pakai Z/C untuk height, Q/E untuk rotate (key universal)
+--- ✅ Proximity: prop & target hanya aktif saat dekat (lib.points)
+--- ✅ Marker: thread stabil, tidak flicker
 
 print('^3[MaximGM-Farming]^7 Loading Plot Client module...')
 
--- id -> { id, owner, coords, tier }
-local AllPlots     = {}
--- id -> entity handle prop box
-local PlotObjects  = {}
--- id -> bool, kontrol draw loop per plot
-local PlotMarkers  = {}
--- identifier player ini (diisi saat load)
+local AllPlots    = {}
+local PlotObjects = {}
+local PlotPoints  = {}
+local PlotMarkerActive = {}  -- [id] = true/false, kontrol draw thread per plot
 local MyIdentifier = nil
 
 local RayCast         = lib.raycast.cam
 local rayCastDistance = Config.rayCastingDistance
 local placingPlot     = false
 
+local PLOT_RENDER_DISTANCE = 60.0   -- Jarak spawn prop
+local MARKER_DRAW_DISTANCE = 30.0   -- Jarak gambar lingkaran
+
 -- =============================================
--- Internal Helpers
+-- Helpers
 -- =============================================
 
 local function isOwner(plotId)
@@ -29,7 +31,7 @@ local function isOwner(plotId)
 end
 
 -- =============================================
--- Visual - Prop Box
+-- Prop Management
 -- =============================================
 
 local function spawnPlotProp(id, coords, tier)
@@ -60,49 +62,19 @@ local function spawnPlotProp(id, coords, tier)
     return obj
 end
 
-local function removePlotVisual(id)
-    -- Stop draw loop
-    PlotMarkers[id] = false
-
+local function despawnPlotProp(id)
     if PlotObjects[id] and DoesEntityExist(PlotObjects[id]) then
+        if Config.Target == 'ox_target' then
+            exports['ox_target']:removeLocalEntity(PlotObjects[id])
+        end
         SetEntityAsMissionEntity(PlotObjects[id], false, true)
         DeleteEntity(PlotObjects[id])
         PlotObjects[id] = nil
     end
 end
 
--- Ground circle marker draw loop
-local function startDrawLoop(id, coords, tier)
-    PlotMarkers[id] = true
-
-    CreateThread(function()
-        local tierConfig = Config.Plots.tiers[tier]
-        if not tierConfig then return end
-
-        local radius = tierConfig.radius
-        local r      = tierConfig.color.r
-        local g      = tierConfig.color.g
-        local b      = tierConfig.color.b
-
-        while PlotMarkers[id] do
-            local alpha = isOwner(id) and 70 or 35 -- owner lebih terang
-
-            DrawMarker(
-                1,
-                coords.x, coords.y, coords.z + 0.05,
-                0, 0, 0,
-                0, 0, 0,
-                radius * 2, radius * 2, 0.3,
-                r, g, b, alpha,
-                false, false, 2, false, nil, nil, false
-            )
-            Wait(0)
-        end
-    end)
-end
-
 -- =============================================
--- ox_target - Semua player lihat, aksi dibatasi owner
+-- ox_target
 -- =============================================
 
 local function registerPlotTarget(id, entityHandle)
@@ -110,7 +82,6 @@ local function registerPlotTarget(id, entityHandle)
     if Config.Target ~= 'ox_target' then return end
 
     exports['ox_target']:addLocalEntity(entityHandle, {
-        -- Info - semua player bisa lihat
         {
             name     = 'maximgm_plot_info_' .. id,
             label    = Locales['plot_check'] or 'Check Plot',
@@ -120,29 +91,23 @@ local function registerPlotTarget(id, entityHandle)
                 TriggerEvent('maximgm-farming:client:Plot:OpenMenu', id)
             end,
         },
-        -- Upgrade - hanya owner
         {
-            name      = 'maximgm_plot_upgrade_' .. id,
-            label     = Locales['plot_upgrade'] or 'Upgrade Plot',
-            icon      = 'fas fa-arrow-circle-up',
-            distance  = 2.5,
-            canInteract = function()
-                return isOwner(id)
-            end,
-            onSelect  = function()
+            name        = 'maximgm_plot_upgrade_' .. id,
+            label       = Locales['plot_upgrade'] or 'Upgrade Plot',
+            icon        = 'fas fa-arrow-circle-up',
+            distance    = 2.5,
+            canInteract = function() return isOwner(id) end,
+            onSelect    = function()
                 TriggerEvent('maximgm-farming:client:Plot:Upgrade', id)
             end,
         },
-        -- Remove - hanya owner
         {
-            name      = 'maximgm_plot_remove_' .. id,
-            label     = Locales['plot_remove'] or 'Remove Plot',
-            icon      = 'fas fa-trash',
-            distance  = 2.5,
-            canInteract = function()
-                return isOwner(id)
-            end,
-            onSelect  = function()
+            name        = 'maximgm_plot_remove_' .. id,
+            label       = Locales['plot_remove'] or 'Remove Plot',
+            icon        = 'fas fa-trash',
+            distance    = 2.5,
+            canInteract = function() return isOwner(id) end,
+            onSelect    = function()
                 TriggerEvent('maximgm-farming:client:Plot:Remove', id)
             end,
         },
@@ -150,25 +115,129 @@ local function registerPlotTarget(id, entityHandle)
 end
 
 -- =============================================
--- Add/Remove Plot (dipanggil dari load & network event)
+-- MARKER DRAW THREAD (STABIL, tidak flicker)
+-- ✅ Fix: jangan taruh DrawMarker di nearby lib.points
+--    Buat thread terpisah per plot, matikan saat keluar radius
+-- =============================================
+
+local function startMarkerThread(id, coords, tier)
+    -- Hentikan thread lama kalau ada
+    PlotMarkerActive[id] = false
+    Wait(20) -- kasih waktu thread lama berhenti
+
+    local tierConfig = Config.Plots.tiers[tier]
+    if not tierConfig then return end
+
+    local r      = tierConfig.color.r
+    local g      = tierConfig.color.g
+    local b      = tierConfig.color.b
+    local radius = tierConfig.radius
+
+    PlotMarkerActive[id] = true
+
+    CreateThread(function()
+        while PlotMarkerActive[id] do
+            -- Cek jarak player ke plot
+            local playerCoords = GetEntityCoords(cache.ped)
+            local dist         = #(playerCoords - coords)
+
+            if dist <= MARKER_DRAW_DISTANCE then
+                local alpha = isOwner(id) and 70 or 35
+                DrawMarker(
+                    1,
+                    coords.x, coords.y, coords.z + 0.05,
+                    0, 0, 0,
+                    0, 0, 0,
+                    radius * 2, radius * 2, 0.3,
+                    r, g, b, alpha,
+                    false, false, 2, false, nil, nil, false
+                )
+                Wait(0)   -- Render tiap frame saat dekat
+            else
+                Wait(500) -- Tidur saat masih dalam RENDER_DISTANCE tapi di luar MARKER_DISTANCE
+            end
+        end
+    end)
+end
+
+local function stopMarkerThread(id)
+    PlotMarkerActive[id] = false
+end
+
+-- =============================================
+-- PROXIMITY SYSTEM
+-- lib.points: onEnter/onExit untuk spawn/despawn prop
+-- nearby DIKOSONGKAN (tidak ada logic di dalamnya)
+-- Draw marker dihandle oleh thread terpisah di atas
+-- =============================================
+
+local function createPlotPoint(id, coords, tier)
+    if PlotPoints[id] then
+        PlotPoints[id]:remove()
+        PlotPoints[id] = nil
+    end
+
+    PlotPoints[id] = lib.points.new({
+        coords   = coords,
+        distance = PLOT_RENDER_DISTANCE,
+        plotId   = id,
+        plotTier = tier,
+
+        onEnter = function(self)
+            -- Spawn prop
+            local obj = spawnPlotProp(self.plotId, coords, self.plotTier)
+            if obj then
+                registerPlotTarget(self.plotId, obj)
+            end
+            -- Mulai draw marker (thread stabil)
+            startMarkerThread(self.plotId, coords, self.plotTier)
+        end,
+
+        onExit = function(self)
+            -- Despawn prop & target
+            despawnPlotProp(self.plotId)
+            -- Hentikan draw marker
+            stopMarkerThread(self.plotId)
+        end,
+
+        -- ✅ nearby KOSONG - tidak ada DrawMarker di sini!
+        -- Kalau nearby diisi Wait(0) + DrawMarker → flicker karena race condition
+        nearby = function(self)
+            Wait(1000) -- Tidur panjang, tidak ada yang perlu dilakukan di sini
+        end,
+    })
+end
+
+local function removePlotPoint(id)
+    stopMarkerThread(id)
+    despawnPlotProp(id)
+    if PlotPoints[id] then
+        PlotPoints[id]:remove()
+        PlotPoints[id] = nil
+    end
+end
+
+-- =============================================
+-- Add / Remove Plot
 -- =============================================
 
 local function addPlot(id, owner, coords, tier)
     AllPlots[id] = { id = id, owner = owner, coords = coords, tier = tier }
-
-    local obj = spawnPlotProp(id, coords, tier)
-    startDrawLoop(id, coords, tier)
-    registerPlotTarget(id, obj)
+    createPlotPoint(id, coords, tier)
 end
 
 local function removePlot(id)
     AllPlots[id] = nil
-    removePlotVisual(id)
+    removePlotPoint(id)
 end
 
 -- =============================================
--- Plot Placement via Raycast
--- Nanam di atas box → preview pakai prop yang sama + z-offset
+-- PLACEMENT SYSTEM
+-- ✅ FIX arrow: pakai Z (naik) / C (turun), Q (rotate kiri) / E (rotate kanan)
+--    Key yang pasti bebas di hampir semua framework FiveM
+--    Z = keycode 20, C = keycode 26, Q = keycode 44, E = keycode 38
+--    (E juga dipakai untuk [Place] → pakai IsControlJustPressed untuk Place
+--     dan IsControlPressed untuk rotate agar tidak bentrok)
 -- =============================================
 
 local function startPlotPlacement()
@@ -188,58 +257,85 @@ local function startPlotPlacement()
     local tierConfig = Config.Plots.tiers[1]
     local radius     = tierConfig.radius
 
+    -- ✅ Update hint sesuai key yang dipakai
     lib.showTextUI(
-        Locales['plot_place_hint'] or '[E] - Place Plot / [X] - Cancel',
+        '[E] Place  |  [X] Cancel  |  [Z] Up  |  [C] Down  |  [Q] Rotate Left  |  [R] Rotate Right',
         { position = 'left-center', icon = 'fas fa-seedling', style = { borderRadius = 10 } }
     )
 
-    -- Preview: spawn prop box yang sama
-    local previewModel = tierConfig.prop
-    lib.requestModel(previewModel)
-    local previewObj = CreateObjectNoOffset(previewModel, 0, 0, 0, false, false, false)
-    SetModelAsNoLongerNeeded(previewModel)
+    lib.requestModel(tierConfig.prop)
+    local previewObj = CreateObjectNoOffset(tierConfig.prop, 0, 0, 0, false, false, false)
+    SetModelAsNoLongerNeeded(tierConfig.prop)
     SetEntityCollision(previewObj, false, false)
     SetEntityAlpha(previewObj, 150, false)
 
     local validPlacement = false
     local previewCoords  = vector3(0, 0, 0)
     local drawPreview    = true
+    local extraZ         = 0.0
+    local heading        = 0.0
 
-    -- Draw circle preview loop
+    -- Thread draw preview marker (stabil, tidak flicker)
     CreateThread(function()
         while drawPreview do
-            local r = validPlacement and 0   or 255
-            local g = validPlacement and 255 or 0
-            DrawMarker(1,
-                previewCoords.x, previewCoords.y, previewCoords.z + 0.05,
-                0,0,0, 0,0,0,
-                radius * 2, radius * 2, 0.3,
-                r, g, 0, 70,
-                false, false, 2, false, nil, nil, false)
+            if previewCoords.x ~= 0 or previewCoords.y ~= 0 then
+                local r = validPlacement and 0 or 255
+                local g = validPlacement and 255 or 0
+                DrawMarker(
+                    1,
+                    previewCoords.x, previewCoords.y, previewCoords.z + 0.05,
+                    0, 0, 0, 0, 0, 0,
+                    radius * 2, radius * 2, 0.3,
+                    r, g, 0, 70,
+                    false, false, 2, false, nil, nil, false
+                )
+            end
             Wait(0)
         end
     end)
 
-    -- Raycast loop
+    -- Thread raycast + input
     CreateThread(function()
-        local hit, endCoords, materialHash
+        local notifCooldown = 0
 
         while placingPlot do
-            hit, _, endCoords, _, materialHash = RayCast(511, 4, rayCastDistance)
+            local hit, _, endCoords, _, materialHash = RayCast(511, 4, rayCastDistance)
+
+            -- ✅ Z = naik (keycode 20)
+            if IsControlPressed(0, 20) then
+                extraZ = extraZ + 0.005
+            end
+
+            -- ✅ C = turun (keycode 26)
+            if IsControlPressed(0, 26) then
+                extraZ = extraZ - 0.005
+            end
+
+            -- ✅ Q = rotate kiri (keycode 44)
+            if IsControlPressed(0, 44) then
+                heading = (heading + 1.5) % 360.0
+            end
+
+            -- ✅ R = rotate kanan (keycode 45)
+            if IsControlPressed(0, 45) then
+                heading = (heading - 1.5) % 360.0
+            end
 
             if hit then
                 previewCoords  = endCoords
                 validPlacement = Config.GroundHashes[materialHash] ~= nil
+
                 SetEntityCoords(previewObj,
                     endCoords.x,
                     endCoords.y,
-                    endCoords.z + (tierConfig.propZOffset or 0.0))
+                    endCoords.z + (tierConfig.propZOffset or 0.0) + extraZ)
+                SetEntityHeading(previewObj, heading)
             end
 
-            -- [X] Cancel
+            -- X = cancel
             if IsControlJustPressed(0, 186) then break end
 
-            -- [E] Place
+            -- E = place (JustPressed agar tidak bentrok dengan rotate)
             if IsControlJustPressed(0, 38) and hit then
                 if not validPlacement then
                     utils.notify(Locales['notify_title_farming'],
@@ -247,21 +343,53 @@ local function startPlotPlacement()
 
                 elseif Config.FarmingZones and #Config.FarmingZones > 0 and not _G.InsideZone then
                     utils.notify(Locales['notify_title_farming'],
-                        Locales['not_in_farming_zone'] or 'Must be in a farming zone!', 'error', 3000)
+                        Locales['not_in_farming_zone'] or 'Must be in a farming zone!', 'error', 2000)
+
                 else
-                    drawPreview = false
-                    lib.hideTextUI()
-                    if DoesEntityExist(previewObj) then DeleteEntity(previewObj) end
-                    placingPlot = false
-                    TriggerServerEvent('maximgm-farming:server:Plot:Place', previewCoords)
-                    return
+                    local tooClose      = false
+                    local onOtherPlayer = false
+
+                    for pid, plot in pairs(AllPlots) do
+                        local dist = #(endCoords - plot.coords)
+                        if dist < Config.Plots.minPlotDistance then
+                            tooClose = true
+                            if not isOwner(pid) then onOtherPlayer = true end
+                            break
+                        end
+                    end
+
+                    if onOtherPlayer then
+                        if GetGameTimer() > notifCooldown then
+                            utils.notify(Locales['notify_title_farming'],
+                                Locales['plot_placed_on_other'] or "Cannot place near another player's plot!",
+                                'error', 2000)
+                            notifCooldown = GetGameTimer() + 2500
+                        end
+                    elseif tooClose then
+                        if GetGameTimer() > notifCooldown then
+                            utils.notify(Locales['notify_title_farming'],
+                                string.format(Locales['plot_too_close'] or 'Too close! (%.1fm min)',
+                                    Config.Plots.minPlotDistance),
+                                'error', 2000)
+                            notifCooldown = GetGameTimer() + 2500
+                        end
+                    else
+                        drawPreview = false
+                        lib.hideTextUI()
+                        if DoesEntityExist(previewObj) then DeleteEntity(previewObj) end
+                        placingPlot = false
+
+                        local finalCoords = vector3(endCoords.x, endCoords.y, endCoords.z + extraZ)
+                        TriggerServerEvent('maximgm-farming:server:Plot:Place', finalCoords, heading)
+                        return
+                    end
                 end
             end
 
             Wait(0)
         end
 
-        -- Cancelled
+        -- Dibatalkan
         drawPreview = false
         lib.hideTextUI()
         if DoesEntityExist(previewObj) then DeleteEntity(previewObj) end
@@ -271,7 +399,6 @@ end
 
 -- =============================================
 -- Plot Menu
--- Semua player bisa buka, tapi isi berbeda
 -- =============================================
 
 RegisterNetEvent('maximgm-farming:client:Plot:OpenMenu', function(plotId)
@@ -281,37 +408,29 @@ RegisterNetEvent('maximgm-farming:client:Plot:OpenMenu', function(plotId)
     local tierConfig = Config.Plots.tiers[plot.tier]
     if not tierConfig then return end
 
-    local isMine = isOwner(plotId)
-
-    -- Hitung tanaman di plot ini (client-side estimate)
+    local isMine     = isOwner(plotId)
     local plantCount = 0
+
     if _G.PlantClass and _G.PlantClass.PlantCache then
         for _, plantData in pairs(_G.PlantClass.PlantCache) do
             if plantData and plantData.coords then
-                local dist = #(plot.coords - plantData.coords)
-                if dist <= tierConfig.radius then
+                if #(plot.coords - plantData.coords) <= tierConfig.radius then
                     plantCount = plantCount + 1
                 end
             end
         end
     end
 
-    local ownerLabel = isMine and '(Your Plot)' or '(Not your plot)'
-
     local options = {
         {
-            title    = string.format('%s %s', tierConfig.name, ownerLabel),
-            description = string.format(
-                'Plants: %d/%d  |  Radius: %.0fm',
-                plantCount, tierConfig.maxPlants, tierConfig.radius
-            ),
-            icon     = 'fas fa-seedling',
-            disabled = true,
+            title       = string.format('%s %s', tierConfig.name, isMine and '(Your Plot)' or '(Not yours)'),
+            description = string.format('Plants: %d/%d  |  Radius: %.0fm', plantCount, tierConfig.maxPlants, tierConfig.radius),
+            icon        = 'fas fa-seedling',
+            disabled    = true,
         },
     }
 
     if isMine then
-        -- Upgrade
         if tierConfig.upgradeItem and Config.Plots.tiers[plot.tier + 1] then
             local nextTier = Config.Plots.tiers[plot.tier + 1]
             options[#options + 1] = {
@@ -329,16 +448,14 @@ RegisterNetEvent('maximgm-farming:client:Plot:OpenMenu', function(plotId)
             }
         end
 
-        -- Remove
         options[#options + 1] = {
             title       = Locales['plot_remove'] or 'Remove Plot',
-            description = Locales['plot_remove_desc'] or 'Remove all plants first. Item will be returned.',
+            description = Locales['plot_remove_desc'] or 'Remove all plants first.',
             icon        = 'fas fa-trash',
             event       = 'maximgm-farming:client:Plot:Remove',
             args        = plotId,
         }
     else
-        -- Bukan owner: tampilkan info saja
         options[#options + 1] = {
             title    = 'This plot belongs to someone else.',
             icon     = 'fas fa-lock',
@@ -346,46 +463,35 @@ RegisterNetEvent('maximgm-farming:client:Plot:OpenMenu', function(plotId)
         }
     end
 
-    lib.registerContext({
-        id      = 'maximgm_plot_menu_' .. plotId,
-        title   = Locales['plot_header'] or 'Farm Plot',
-        options = options,
-    })
+    lib.registerContext({ id = 'maximgm_plot_menu_' .. plotId, title = Locales['plot_header'] or 'Farm Plot', options = options })
     lib.showContext('maximgm_plot_menu_' .. plotId)
 end)
 
 -- =============================================
--- Upgrade (owner only)
+-- Upgrade
 -- =============================================
 
 RegisterNetEvent('maximgm-farming:client:Plot:Upgrade', function(plotId)
     if not isOwner(plotId) then return end
-
     local plot = AllPlots[plotId]
     if not plot then return end
 
     local tierConfig = Config.Plots.tiers[plot.tier]
     if not tierConfig or not tierConfig.upgradeItem then
-        utils.notify(Locales['notify_title_farming'],
-            Locales['plot_max_tier'] or 'Already max tier!', 'error', 3000)
+        utils.notify(Locales['notify_title_farming'], Locales['plot_max_tier'] or 'Already max tier!', 'error', 3000)
         return
     end
 
     if not client.hasItems(tierConfig.upgradeItem, 1) then
         utils.notify(Locales['notify_title_farming'],
-            string.format(Locales['plot_no_upgrade_item'] or 'You need %s!', tierConfig.upgradeItem),
-            'error', 3000)
+            string.format(Locales['plot_no_upgrade_item'] or 'You need %s!', tierConfig.upgradeItem), 'error', 3000)
         return
     end
 
     local ped = cache.ped
     lib.playAnim(ped, 'amb@medic@standing@kneel@base', 'base', 8.0, 8.0, -1, 1, 0, false, false, false)
 
-    if lib.progressBar({
-        duration = 5000, label = Locales['plot_upgrading'] or 'Upgrading plot...',
-        useWhileDead = false, canCancel = true,
-        disable = { car = true, move = true, combat = true, mouse = false },
-    }) then
+    if lib.progressBar({ duration = 5000, label = Locales['plot_upgrading'] or 'Upgrading...', useWhileDead = false, canCancel = true, disable = { car = true, move = true, combat = true } }) then
         TriggerServerEvent('maximgm-farming:server:Plot:Upgrade', plotId)
         ClearPedTasks(ped)
     else
@@ -395,23 +501,18 @@ RegisterNetEvent('maximgm-farming:client:Plot:Upgrade', function(plotId)
 end)
 
 -- =============================================
--- Remove (owner only)
+-- Remove Plot
 -- =============================================
 
 RegisterNetEvent('maximgm-farming:client:Plot:Remove', function(plotId)
     if not isOwner(plotId) then return end
-
     local plot = AllPlots[plotId]
     if not plot then return end
 
     local ped = cache.ped
     lib.playAnim(ped, 'amb@medic@standing@kneel@base', 'base', 8.0, 8.0, -1, 1, 0, false, false, false)
 
-    if lib.progressBar({
-        duration = 4000, label = Locales['plot_removing'] or 'Removing plot...',
-        useWhileDead = false, canCancel = true,
-        disable = { car = true, move = true, combat = true, mouse = false },
-    }) then
+    if lib.progressBar({ duration = 4000, label = Locales['plot_removing'] or 'Removing...', useWhileDead = false, canCancel = true, disable = { car = true, move = true, combat = true } }) then
         TriggerServerEvent('maximgm-farming:server:Plot:Remove', plotId)
         ClearPedTasks(ped)
     else
@@ -421,64 +522,84 @@ RegisterNetEvent('maximgm-farming:client:Plot:Remove', function(plotId)
 end)
 
 -- =============================================
--- Network Events dari Server
+-- Delete Plant (dari ox_target langsung)
 -- =============================================
 
--- Plot baru → broadcast ke semua player
-RegisterNetEvent('maximgm-farming:client:Plot:New', function(id, owner, coords, tier)
-    addPlot(id, owner, coords, tier)
-    -- Notify hanya ke owner
-    if MyIdentifier and owner == MyIdentifier then
-        utils.notify(Locales['notify_title_farming'],
-            Locales['plot_placed'] or 'Farm plot placed!', 'success', 3000)
+RegisterNetEvent('maximgm-farming:client:ClearPlant', function(entity)
+    local plantData = _G.PlantClass and _G.PlantClass.PlantCache[entity]
+    if not plantData then return end
+
+    local ped = cache.ped
+    lib.playAnim(ped, 'amb@medic@standing@kneel@base', 'base', 8.0, 8.0, -1, 1, 0, false, false, false)
+
+    if lib.progressBar({ duration = 3000, label = Locales['clear_plant'] or 'Clearing Plant..', useWhileDead = false, canCancel = true, disable = { car = true, move = true, combat = true } }) then
+        TriggerServerEvent('maximgm-farming:server:ClearPlant', plantData.id)
+        ClearPedTasks(ped)
+    else
+        ClearPedTasks(ped)
+        utils.notify(Locales['notify_title_farming'], Locales['canceled'] or 'Canceled.', 'error', 2000)
     end
 end)
 
--- Plot dihapus → broadcast ke semua player
+RegisterNetEvent('maximgm-farming:client:Plant:AutoDelete', function()
+    utils.notify(Locales['notify_title_farming'],
+        Locales['plant_auto_deleted'] or '💀 A dead plant has been automatically removed.', 'error', 6000)
+end)
+
+-- =============================================
+-- Network Events
+-- =============================================
+
+RegisterNetEvent('maximgm-farming:client:Plot:New', function(id, owner, coords, tier)
+    addPlot(id, owner, coords, tier)
+    if MyIdentifier and owner == MyIdentifier then
+        utils.notify(Locales['notify_title_farming'], Locales['plot_placed'] or 'Farm plot placed!', 'success', 3000)
+    end
+end)
+
 RegisterNetEvent('maximgm-farming:client:Plot:Remove', function(id)
     removePlot(id)
 end)
 
--- Tier update → broadcast ke semua player
 RegisterNetEvent('maximgm-farming:client:Plot:UpdateTier', function(id, newTier)
     local plot = AllPlots[id]
     if not plot then return end
 
-    plot.tier   = newTier
+    plot.tier    = newTier
     AllPlots[id] = plot
 
-    -- Refresh visual
-    removePlotVisual(id)
-    local obj = spawnPlotProp(id, plot.coords, newTier)
-    startDrawLoop(id, plot.coords, newTier)
-    registerPlotTarget(id, obj)
+    removePlotPoint(id)
+    createPlotPoint(id, plot.coords, newTier)
 
-    -- Notify hanya ke owner
+    local playerCoords = GetEntityCoords(cache.ped)
+    if #(playerCoords - plot.coords) <= PLOT_RENDER_DISTANCE then
+        local obj = spawnPlotProp(id, plot.coords, newTier)
+        if obj then
+            registerPlotTarget(id, obj)
+            startMarkerThread(id, plot.coords, newTier)
+        end
+    end
+
     if MyIdentifier and plot.owner == MyIdentifier then
         local tierConfig = Config.Plots.tiers[newTier]
         utils.notify(Locales['notify_title_farming'],
-            string.format(Locales['plot_upgraded'] or 'Upgraded to %s!',
-                tierConfig and tierConfig.name or 'Tier ' .. newTier),
-            'success', 4000)
+            string.format(Locales['plot_upgraded'] or 'Upgraded to %s!', tierConfig and tierConfig.name or ''), 'success', 4000)
     end
 end)
 
 -- =============================================
--- Load semua plot saat join
+-- Load
 -- =============================================
 
 CreateThread(function()
     Wait(3000)
 
-    -- Ambil identifier sendiri dulu
     MyIdentifier = lib.callback.await('maximgm-farming:server:Plot:GetMyIdentifier', 5000)
     if MyIdentifier then
         print('^2[MaximGM-Farming]^7 My identifier: ' .. MyIdentifier)
     end
 
-    -- Ambil SEMUA plot (untuk render prop semua orang)
     local result = lib.callback.await('maximgm-farming:server:Plot:GetAll', 5000)
-
     if result then
         local count = 0
         for id, data in pairs(result) do
@@ -492,44 +613,31 @@ CreateThread(function()
 end)
 
 -- =============================================
--- Export: cek apakah entity adalah prop plot milik sendiri
--- Return plotId jika ya, nil jika bukan
+-- Exports
+-- =============================================
+
 exports('getPlotIdByProp', function(entityHandle)
-    if not entityHandle then return nil end
-    if not MyIdentifier then return nil end
+    if not entityHandle or not MyIdentifier then return nil end
     for id, plot in pairs(AllPlots) do
-        if plot.owner == MyIdentifier then
-            if PlotObjects[id] and PlotObjects[id] == entityHandle then
-                return id
-            end
+        if plot.owner == MyIdentifier and PlotObjects[id] == entityHandle then
+            return id
         end
     end
     return nil
 end)
-
--- Export: cek apakah coords ada di dalam plot MILIK SENDIRI
--- Dipakai planting.lua sebelum trigger server
--- =============================================
 
 exports('isInsideMyPlot', function(coords)
     if not coords or not MyIdentifier then return false, nil end
     for id, plot in pairs(AllPlots) do
         if plot.owner == MyIdentifier then
             local tierConfig = Config.Plots.tiers[plot.tier]
-            if tierConfig then
-                local dist = #(coords - plot.coords)
-                if dist <= tierConfig.radius then
-                    return true, id
-                end
+            if tierConfig and #(coords - plot.coords) <= tierConfig.radius then
+                return true, id
             end
         end
     end
     return false, nil
 end)
-
--- =============================================
--- Export usePlot (trigger dari ox_inventory item)
--- =============================================
 
 exports('usePlot', function()
     startPlotPlacement()
@@ -542,7 +650,7 @@ end)
 AddEventHandler('onResourceStop', function(resource)
     if resource ~= Config.Resource then return end
     for id, _ in pairs(AllPlots) do
-        removePlotVisual(id)
+        removePlotPoint(id)
     end
 end)
 
