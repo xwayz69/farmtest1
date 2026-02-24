@@ -281,18 +281,47 @@ local function useSeed(plantType, rowMode)
                                     canCancel = true,
                                     disable = { car = true, move = true, combat = true, mouse = false },
                                 }) then
+                                    local planted = 0
+                                    local skipped = 0
                                     for _, pos in ipairs(positions) do
-                                        plantSeedAtLocation(pos, plantType, true)
+                                        local insidePlot, plotId = exports[Config.Resource]:isInsideMyPlot(pos)
+                                        if insidePlot then
+                                            -- Tambah plantZOffset supaya tanaman spawn di atas box
+                                            local plantCoords = pos
+                                            if plotId and _G.PlotSystem and _G.PlotSystem.AllPlots then
+                                                local plot = _G.PlotSystem.AllPlots[plotId]
+                                                if plot then
+                                                    local tierConfig = Config.Plots.tiers[plot.tier]
+                                                    if tierConfig and tierConfig.plantZOffset then
+                                                        plantCoords = vector3(pos.x, pos.y, pos.z + tierConfig.plantZOffset)
+                                                    end
+                                                end
+                                            end
+                                            plantSeedAtLocation(plantCoords, plantType, true)
+                                            planted = planted + 1
+                                        else
+                                            skipped = skipped + 1
+                                        end
                                     end
-                                    
+
                                     ClearPedTasks(ped)
                                     placingSeed = false
-                                    utils.notify(
-                                        Locales['notify_title_farming'], 
-                                        string.format('Planted %d seeds in a row!', #positions), 
-                                        'success', 
-                                        3000
-                                    )
+
+                                    if skipped > 0 then
+                                        utils.notify(
+                                            Locales['notify_title_farming'],
+                                            string.format('Planted %d seeds (%d skipped - outside plot)', planted, skipped),
+                                            planted > 0 and 'success' or 'error',
+                                            4000
+                                        )
+                                    else
+                                        utils.notify(
+                                            Locales['notify_title_farming'], 
+                                            string.format('Planted %d seeds in a row!', planted), 
+                                            'success', 
+                                            3000
+                                        )
+                                    end
                                     return
                                 else
                                     ClearPedTasks(ped)
@@ -379,18 +408,41 @@ local function useSeed(plantType, rowMode)
                                 )
                                 Wait(200)
                             else
-                                seedPlaced = true
-                                lib.hideTextUI()
-                                DeleteObject(plant)
-
-                                if plantSeedAtLocation(endCoords, plantType, false) then
-                                    placingSeed = false
-                                    currentPlantType = nil
-                                    return
+                                -- Cek apakah dalam plot milik sendiri
+                                local insidePlot, plotId = exports[Config.Resource]:isInsideMyPlot(endCoords)
+                                if not insidePlot then
+                                    utils.notify(
+                                        Locales['notify_title_farming'],
+                                        Locales['plot_not_in_plot'] or 'You must plant inside your own farm plot!',
+                                        'error', 3000
+                                    )
+                                    Wait(200)
                                 else
-                                    placingSeed = false
-                                    currentPlantType = nil
-                                    return
+                                    -- Ambil plantZOffset dari tier plot supaya tanaman spawn di atas box
+                                    local plantCoords = endCoords
+                                    if plotId and _G.PlotSystem and _G.PlotSystem.AllPlots then
+                                        local plot = _G.PlotSystem.AllPlots[plotId]
+                                        if plot then
+                                            local tierConfig = Config.Plots.tiers[plot.tier]
+                                            if tierConfig and tierConfig.plantZOffset then
+                                                plantCoords = vector3(endCoords.x, endCoords.y, endCoords.z + tierConfig.plantZOffset)
+                                            end
+                                        end
+                                    end
+
+                                    seedPlaced = true
+                                    lib.hideTextUI()
+                                    DeleteObject(plant)
+
+                                    if plantSeedAtLocation(plantCoords, plantType, false) then
+                                        placingSeed = false
+                                        currentPlantType = nil
+                                        return
+                                    else
+                                        placingSeed = false
+                                        currentPlantType = nil
+                                        return
+                                    end
                                 end
                             end
                         end

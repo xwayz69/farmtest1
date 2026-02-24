@@ -7,7 +7,7 @@ RegisterNetEvent('maximgm-farming:server:CreateNewPlant', function(coords, plant
         print('^1[MaximGM-Farming] ERROR: Plant class not loaded!^7')
         return
     end
-    
+
     local src = source
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
@@ -20,12 +20,72 @@ RegisterNetEvent('maximgm-farming:server:CreateNewPlant', function(coords, plant
     local plantConfig = Config.Plants[plantType]
     if not plantConfig then return end
 
+    -- ================================================
+    -- PLOT VALIDATION
+    -- Cek XY saja (ignore Z) karena tanaman di atas box lebih tinggi dari plot coords
+    -- ================================================
+    if not _G.Plot then
+        utils.notify(src, Locales['notify_title_farming'], 'Plot system not loaded!', 'error', 3000)
+        return
+    end
+
+    local identifier = PlayerData.identifier
+    local foundPlot  = nil
+    local foundTier  = nil
+
+    for _, plot in pairs(_G.PlotCache) do
+        if plot.owner == identifier then
+            local tierConfig = Config.Plots.tiers[plot.tier]
+            if tierConfig then
+                -- Cek jarak XY saja (2D), abaikan perbedaan Z karena nanam di atas box
+                local dx   = coords.x - plot.coords.x
+                local dy   = coords.y - plot.coords.y
+                local dist = math.sqrt(dx * dx + dy * dy)
+                if dist <= tierConfig.radius then
+                    foundPlot = plot
+                    foundTier = tierConfig
+                    break
+                end
+            end
+        end
+    end
+
+    if not foundPlot then
+        utils.notify(src, Locales['notify_title_farming'],
+            Locales['plot_not_in_plot'] or 'You must plant inside your own farm plot!',
+            'error', 4000)
+        return
+    end
+
+    -- Hitung tanaman yang sudah ada di plot ini (XY check juga)
+    local plantCount = 0
+    if _G.PlantCache then
+        for _, plantData in pairs(_G.PlantCache) do
+            if plantData and plantData.coords then
+                local dx   = plantData.coords.x - foundPlot.coords.x
+                local dy   = plantData.coords.y - foundPlot.coords.y
+                local dist = math.sqrt(dx * dx + dy * dy)
+                if dist <= foundTier.radius then
+                    plantCount = plantCount + 1
+                end
+            end
+        end
+    end
+
+    if plantCount >= foundTier.maxPlants then
+        utils.notify(src, Locales['notify_title_farming'],
+            Locales['plot_full'] or 'Your plot is full! Upgrade to plant more.',
+            'error', 4000)
+        return
+    end
+    -- ================================================
+
     if server.removeItem(src, plantConfig.seed, 1) then
         _G.Plant:new(coords, plantType, PlayerData.identifier)
         server.createLog(
-            PlayerData.name, 
-            'New Plant', 
-            PlayerData.name .. ' (identifier: ' .. PlayerData.identifier .. ' | id: ' .. src .. ')' .. 
+            PlayerData.name,
+            'New Plant',
+            PlayerData.name .. ' (identifier: ' .. PlayerData.identifier .. ' | id: ' .. src .. ')' ..
             ' placed new ' .. plantType .. ' plant at ' .. tostring(coords)
         )
     end

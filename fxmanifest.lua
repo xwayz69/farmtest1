@@ -1,10 +1,12 @@
+--- fxmanifest.lua (Updated for Plot System v2 - Private)
+
 fx_version 'cerulean'
 game 'gta5'
 use_experimental_fxv2_oal 'yes'
 lua54 'yes'
 
-version '1.0.1'
-description 'MaximGM Farming System - Multi-Crop Planting Script (Optimized)'
+version '1.2.0'
+description 'MaximGM Farming System - Private Plot System'
 author 'MaximGM Development'
 
 dependencies {
@@ -19,17 +21,19 @@ files {
 shared_scripts {
     '@ox_lib/init.lua',
     'shared/config.lua',
+    'shared/plot_config.lua',   -- Plot tiers & config
     'shared/locales.lua',
 }
 
 client_scripts {
     'bridge/**/client.lua',
-    'utils/client.lua',       -- Load utils first
-    'client/zones.lua',        -- Load zones second
-    'client/plant.lua',        -- Load plant third
-    'client/planting.lua',     -- Load planting fourth
-    'client/interactions.lua', -- Load interactions fifth
-    'client/main.lua'
+    'utils/client.lua',
+    'client/zones.lua',
+    'client/plant.lua',
+    'client/planting.lua',      -- PATCH ini dulu sebelum pakai plot
+    'client/interactions.lua',
+    'client/cl_plot.lua',       -- Plot client (privat)
+    'client/main.lua',
 }
 
 server_scripts {
@@ -37,8 +41,11 @@ server_scripts {
     'bridge/**/server.lua',
     'utils/server.lua',
     'server/sv_setup.lua',
-    'server/sv_planting.lua',   -- Part 1: Plant Class & Functions (MUST LOAD FIRST!)
-    'server/sv_callbacks.lua',  -- Part 2: Callbacks (FIXED - was missing GetPlantLocations)
-    'server/sv_events.lua',
-     'server/sv_interactions.lua',    -- Part 3: Events
+    'server/sv_plot_setup.lua',     -- Plot DB setup
+    'server/sv_planting.lua',       -- Plant class (HARUS sebelum plot core)
+    'server/sv_plot_core.lua',      -- Plot class, events, callbacks
+    'server/sv_plot_callbacks.lua', -- Usable item registration
+    'server/sv_callbacks.lua',
+    'server/sv_events.lua',         -- PATCH ini untuk validasi plot
+    'server/sv_interactions.lua',
 }
