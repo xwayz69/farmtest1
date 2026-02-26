@@ -9,6 +9,10 @@ RegisterNetEvent('maximgm-farming:server:CreateNewPlant', function(coords, plant
     end
 
     local src = source
+
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(src) then return end
+
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
 
@@ -99,6 +103,10 @@ RegisterNetEvent('maximgm-farming:server:ClearPlant', function(plantId)
     end
     
     local src = source
+
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(src) then return end
+
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
 
@@ -138,6 +146,10 @@ RegisterNetEvent('maximgm-farming:server:HarvestPlant', function(plantId)
     end
     
     local src = source
+
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(src) then return end
+
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
 
@@ -225,6 +237,10 @@ RegisterNetEvent('maximgm-farming:server:GiveWater', function(plantId)
     end
     
     local src = source
+
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(src) then return end
+
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
     
@@ -265,6 +281,10 @@ RegisterNetEvent('maximgm-farming:server:GiveFertilizer', function(plantId)
     end
     
     local src = source
+
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(src) then return end
+
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
 

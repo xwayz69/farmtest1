@@ -16,9 +16,11 @@ end
 
 server.getPlayerData = function(Player)
     return {
-        source = Player.PlayerData.source,
+        source     = Player.PlayerData.source,
         identifier = Player.PlayerData.citizenid,
-        name = Player.PlayerData.name,
+        name       = Player.PlayerData.name,
+        -- FIX: include job so hasAllowedJob() can read job name
+        job        = Player.PlayerData.job,
     }
 end
 
@@ -139,7 +141,9 @@ if GetResourceState('qb-core') == 'started' then
     function server.getPlayerData(Player)
         return {
             identifier = Player.PlayerData.citizenid,
-            name = Player.PlayerData.charinfo.firstname .. ' ' .. Player.PlayerData.charinfo.lastname,
+            name       = Player.PlayerData.charinfo.firstname .. ' ' .. Player.PlayerData.charinfo.lastname,
+            -- FIX: include job so hasAllowedJob() can read job name
+            job        = Player.PlayerData.job,
         }
     end
 

@@ -124,6 +124,9 @@ end
 --- @param rowMode boolean Enable row planting mode
 local function useSeed(plantType, rowMode)
     if cache.vehicle then return end
+
+    -- ✅ JOB CHECK: hanya farmer yang boleh menanam
+    if not requireJobAccess() then return end
     
     local plantConfig = Config.Plants[plantType]
     if not plantConfig then return end

@@ -51,3 +51,10 @@ client.hasItems = function(items, amount)
         return QBCore.Functions.HasItem(items, amount)
     end
 end
+
+--- Job Access Check (untuk farming job system)
+--- Dipanggil oleh requireJobAccess() di cl_job_check.lua
+client.getJobName = function()
+    if not PlayerData or not PlayerData.job then return nil end
+    return PlayerData.job.name
+end

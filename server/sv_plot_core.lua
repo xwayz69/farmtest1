@@ -237,6 +237,10 @@ end)
 --- Place Plot
 RegisterNetEvent('maximgm-farming:server:Plot:Place', function(coords)
     local src    = source
+
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(src) then return end
+
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
 
@@ -294,6 +298,10 @@ end)
 --- Remove Plot
 RegisterNetEvent('maximgm-farming:server:Plot:Remove', function(plotId)
     local src    = source
+
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(src) then return end
+
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
 
@@ -338,6 +346,10 @@ end)
 --- Upgrade Plot
 RegisterNetEvent('maximgm-farming:server:Plot:Upgrade', function(plotId)
     local src    = source
+
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(src) then return end
+
     local Player = server.GetPlayerFromId(src)
     if not Player then return end
 

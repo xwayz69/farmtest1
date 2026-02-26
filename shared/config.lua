@@ -22,7 +22,22 @@ Config = {
         },
     },
 
+    EnableJobSystem = true,     -- true = hanya job tertentu yang bisa akses farming
+                                -- false = semua player bisa farming (behaviour lama)
 
+    Framework = 'qbcore',          -- 'esx' | 'qbcore' | 'qbox'
+
+    --- Daftar job yang boleh farming
+    --- Format: ['nama_job'] = true
+    AllowedJobs = {
+        ['farmer']  = true,
+        ['farm'] = true,
+        -- Tambahkan job lain sesuai server kamu:
+        -- ['police'] = true,
+    },
+
+    --- Pesan notif saat player tidak punya job yang diizinkan
+    JobDeniedMessage = 'You need a farming job to do that!',
 
     --- Farming Plants Configuration
     Plants = {

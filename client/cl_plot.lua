@@ -208,6 +208,9 @@ local function startPlotPlacement()
     if placingPlot then return end
     if cache.vehicle then return end
 
+    -- ✅ JOB CHECK: hanya farmer yang boleh pasang plot
+    if not requireJobAccess() then return end
+
     if not client.hasItems(Config.Plots.plotItem, 1) then
         utils.notify(
             Locales['notify_title_farming'],

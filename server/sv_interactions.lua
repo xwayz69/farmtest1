@@ -4,6 +4,9 @@
 
 --- Check Plant Menu
 RegisterNetEvent('maximgm-farming:client:CheckPlant', function(data)
+    -- ✅ SERVER JOB CHECK
+    if not jobGuard(source) then return end
+
     local plantData = _G.PlantClass.PlantCache[data.entity]
     if not plantData then return end
 
@@ -202,6 +205,7 @@ end)
 
 --- Give Water
 RegisterNetEvent('maximgm-farming:client:GiveWater', function(entity)
+    if not jobGuard(source) then return end
     local plantData = _G.PlantClass.PlantCache[entity]
     if not plantData then return end
 
@@ -253,6 +257,7 @@ end)
 
 --- Give Fertilizer
 RegisterNetEvent('maximgm-farming:client:GiveFertilizer', function(entity)
+    if not jobGuard(source) then return end
     local plantData = _G.PlantClass.PlantCache[entity]
     if not plantData then return end
 

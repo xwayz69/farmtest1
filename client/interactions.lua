@@ -3,6 +3,9 @@
 
 --- Check Plant Menu
 RegisterNetEvent('maximgm-farming:client:CheckPlant', function(data)
+    -- ✅ JOB CHECK
+    if not requireJobAccess() then return end
+
     local plantData = _G.PlantClass.PlantCache[data.entity]
     if not plantData then return end
 
@@ -132,6 +135,7 @@ end)
 
 --- Clear Plant
 RegisterNetEvent('maximgm-farming:client:ClearPlant', function(entity)
+    if not requireJobAccess() then return end
     local plantData = _G.PlantClass.PlantCache[entity]
     if not plantData then return end
 
@@ -160,6 +164,7 @@ end)
 
 --- Harvest Plant
 RegisterNetEvent('maximgm-farming:client:HarvestPlant', function(entity)
+    if not requireJobAccess() then return end
     local plantData = _G.PlantClass.PlantCache[entity]
     if not plantData then return end
 
@@ -187,6 +192,7 @@ end)
 
 --- Give Water
 RegisterNetEvent('maximgm-farming:client:GiveWater', function(entity)
+    if not requireJobAccess() then return end
     local plantData = _G.PlantClass.PlantCache[entity]
     if not plantData then return end
     
@@ -235,6 +241,7 @@ end)
 
 --- Give Fertilizer
 RegisterNetEvent('maximgm-farming:client:GiveFertilizer', function(entity)
+    if not requireJobAccess() then return end
     local plantData = _G.PlantClass.PlantCache[entity]
     if not plantData then return end
     
